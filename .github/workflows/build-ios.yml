@@ -58,6 +58,21 @@ jobs:
       - name: NPM bagimliliklarini kur
         run: npm install
 
+      - name: Eski ios klasorunu temizle (repoda commit edilmis kalinti varsa)
+        run: |
+          # Repoda daha once commit edilmis eski bir ios/ klasoru varsa,
+          # 'npx cap add ios' bunun UZERINE YAZMAZ (mevcut dosyalari korur).
+          # Bu da patch-podfile.py'nin her calistirmada FARKLI/eski bir
+          # Podfile uzerinde calismasina ve guncellemelerin kalici olarak
+          # uygulanamamasina yol aciyordu. Her calistirmada tamamen temiz
+          # bir 'npx cap add ios' saglamak icin klasoru onceden siliyoruz.
+          if [ -d "ios" ]; then
+            echo "Eski ios/ klasoru bulundu, siliniyor..."
+            rm -rf ios
+          else
+            echo "ios/ klasoru yok, temiz baslangic."
+          fi
+
       - name: Capacitor iOS platformunu ekle (tazece uretilir)
         run: npx cap add ios
 
