@@ -198,7 +198,8 @@ jobs:
           if xcodebuild -exportArchive \
             -archivePath build/App.xcarchive \
             -exportPath build/ipa \
-            -exportOptionsPlist exportOptions.plist 2>&1 | tee /tmp/export.log | xcpretty; then
+            -exportOptionsPlist exportOptions.plist \
+            -allowProvisioningUpdates 2>&1 | tee /tmp/export.log | xcpretty; then
             EXPORT_OK=1
           else
             EXPORT_OK=0
