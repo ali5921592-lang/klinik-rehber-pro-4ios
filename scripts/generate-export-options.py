@@ -9,17 +9,15 @@ Bu script, GitHub Actions workflow'u icine gomulu bir Python heredoc
 kullanmak yerine ayri bir dosya olarak tutulur; boylece YAML girinti
 (indentation) sorunlarindan etkilenmez ve test edilebilir/okunabilir olur.
 
-DUZELTME (2): 'signingStyle' 'manual' yerine 'automatic' yapildi.
-Kaynak: ionic-team/capacitor resmi deposu, issue #7625 - ayni "X.framework
-does not support provisioning profiles" hatasini yasayan bir kullanici,
-signingStyle degerini 'automatic' yaparak sorunu cozdugunu dogrulamis.
-'manual' + use_frameworks! kombinasyonu, CocoaPods ile gomulen TUM
-framework'lere (Capacitor, Firebase, vb.) de uygulamanin provisioning
-profile'ini uygulamaya calisiyor ve frameworkler profil kabul etmedigi
-icin hata veriyor. 'automatic' ile xcodebuild, .xcarchive icinde zaten
-mevcut olan imzalari kullanarak her bileseni doğru sekilde paketliyor
-(yeni profil talep etmiyor, sadece paketleme sirasinda -allowProvisioningUpdates
-ile arsivde halihazirda gomulu olani kullanıyor).
+NOT: 'signingStyle: automatic' denendi ama CI ortaminda Apple hesabi
+girisi olmadigi icin "No Accounts" hatasi verdi (otomatik mod, profil
+yonetimi icin Apple'in sunucularina kimlik dogrulamali erisim gerektirir).
+Bu yuzden 'manual' moda geri donuldu. Asil "framework does not support
+provisioning profiles" sorunu, artik build-ios.yml'deki YENI bir adimla
+cozuluyor: arsivdeki framework paketlerinden yanlislikla gomulu kalan
+embedded.mobileprovision dosyalarini export'tan hemen once temizleyen
+bir adim (bkz. "[Imzali mod] Arsivdeki framework'lerden gomulu profil
+dosyalarini temizle").
 
 Gerekli ortam degiskenleri:
   IOS_TEAM_ID       - Apple Developer Team ID
@@ -48,7 +46,11 @@ def main():
     opts = {
         "method": "app-store",
         "teamID": team_id,
-        "signingStyle": "automatic",
+        "signingStyle": "manual",
+        "signingCertificate": "Apple Distribution",
+        "provisioningProfiles": {
+            bundle_id: profile_name,
+        },
         "uploadSymbols": True,
         "compileBitcode": False,
     }
