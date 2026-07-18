@@ -36,6 +36,7 @@ yaygin olarak onerilen duzeltmelerdir.
 """
 import os
 import re
+import shutil
 import sys
 
 PODFILE_PATH = os.path.join("ios", "App", "Podfile")
@@ -49,8 +50,33 @@ POST_INSTALL_SNIPPET = """    installer.pods_project.targets.each do |target|
 """
 
 
+PODS_DIR = os.path.join("ios", "App", "Pods")
+PODFILE_LOCK_PATH = os.path.join("ios", "App", "Podfile.lock")
+
+
 def log(msg):
     print(f"[patch-podfile] {msg}")
+
+
+def clean_stale_lock_and_pods():
+    """Repoya daha once commit edilmis eski bir ios/App klasoru varsa,
+    icindeki Podfile.lock eski/uyumsuz surumleri (orn. GoogleUserMessagingPlatform
+    3.1.0) kilitli tutabilir. 'npx cap add ios' mevcut klasoru silmeden calisirsa,
+    bu eski kilit dosyasi pod install'da 'could not find compatible versions'
+    hatasina yol acar. Podfile'i degistirmeden ONCE bu eski dosyalari temizleyerek
+    CocoaPods'un yeni kisitlamalara (surum sabitlemeleri) gore sifirdan
+    cozumleme yapmasini sagliyoruz."""
+    removed_any = False
+    if os.path.exists(PODFILE_LOCK_PATH):
+        os.remove(PODFILE_LOCK_PATH)
+        log(f"Eski {PODFILE_LOCK_PATH} silindi (guncel Podfile kisitlamalariyla uyumsuz olabilirdi).")
+        removed_any = True
+    if os.path.isdir(PODS_DIR):
+        shutil.rmtree(PODS_DIR)
+        log(f"Eski {PODS_DIR} klasoru silindi.")
+        removed_any = True
+    if not removed_any:
+        log("Temizlenecek eski Podfile.lock veya Pods klasoru bulunamadi.")
 
 
 def ensure_use_frameworks(content):
@@ -162,6 +188,8 @@ def main():
     if not os.path.exists(PODFILE_PATH):
         log(f"HATA: {PODFILE_PATH} bulunamadi. 'npx cap add ios' calistirildi mi?")
         return 1
+
+    clean_stale_lock_and_pods()
 
     with open(PODFILE_PATH, "r", encoding="utf-8") as f:
         content = f.read()
