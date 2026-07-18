@@ -45,6 +45,12 @@ POST_INSTALL_SNIPPET = """    installer.pods_project.targets.each do |target|
       target.build_configurations.each do |config|
         config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
         config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
+        config.build_settings['CODE_SIGN_IDENTITY'] = ''
+        config.build_settings['EXPANDED_CODE_SIGN_IDENTITY'] = '-'
+        config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
+        config.build_settings['DEVELOPMENT_TEAM'] = ''
+        config.build_settings['PROVISIONING_PROFILE'] = ''
+        config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
       end
     end
 """
