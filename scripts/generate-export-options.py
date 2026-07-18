@@ -9,6 +9,18 @@ Bu script, GitHub Actions workflow'u icine gomulu bir Python heredoc
 kullanmak yerine ayri bir dosya olarak tutulur; boylece YAML girinti
 (indentation) sorunlarindan etkilenmez ve test edilebilir/okunabilir olur.
 
+DUZELTME (2): 'signingStyle' 'manual' yerine 'automatic' yapildi.
+Kaynak: ionic-team/capacitor resmi deposu, issue #7625 - ayni "X.framework
+does not support provisioning profiles" hatasini yasayan bir kullanici,
+signingStyle degerini 'automatic' yaparak sorunu cozdugunu dogrulamis.
+'manual' + use_frameworks! kombinasyonu, CocoaPods ile gomulen TUM
+framework'lere (Capacitor, Firebase, vb.) de uygulamanin provisioning
+profile'ini uygulamaya calisiyor ve frameworkler profil kabul etmedigi
+icin hata veriyor. 'automatic' ile xcodebuild, .xcarchive icinde zaten
+mevcut olan imzalari kullanarak her bileseni doğru sekilde paketliyor
+(yeni profil talep etmiyor, sadece paketleme sirasinda -allowProvisioningUpdates
+ile arsivde halihazirda gomulu olani kullanıyor).
+
 Gerekli ortam degiskenleri:
   IOS_TEAM_ID       - Apple Developer Team ID
   IOS_PROFILE_NAME  - Provisioning profile adi (App Store Connect'te tanimli)
@@ -36,10 +48,7 @@ def main():
     opts = {
         "method": "app-store",
         "teamID": team_id,
-        "signingStyle": "manual",
-        "provisioningProfiles": {
-            bundle_id: profile_name,
-        },
+        "signingStyle": "automatic",
         "uploadSymbols": True,
         "compileBitcode": False,
     }
