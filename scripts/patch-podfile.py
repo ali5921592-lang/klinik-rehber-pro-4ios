@@ -89,6 +89,41 @@ def ensure_use_frameworks(content):
     return new_content, True
 
 
+def ensure_firebase_analytics_pod(content):
+    """@capacitor-firebase/analytics kullanan projelerde 'no such module FirebaseCore'
+    hatasinin GERCEK ve BELGELENMIS sebebi: `npx cap sync` sadece Podfile'daki
+    `capacitor_pods` fonksiyonunu/bolumunu yeniden olusturur, ancak Firebase
+    Analytics'in kendi alt-spec pod satirini asla otomatik eklemez. Bu satir
+    'target 'App' do ... end' blogunun icine elle eklenmelidir. Kaynak:
+    capawesome-team/capacitor-firebase resmi deposu, issue #622 (proje
+    bakimcisinin dogrulanmis cevabi).
+    Bu fonksiyon, sadece proje node_modules altinda @capacitor-firebase/analytics
+    varsa (yani bu eklenti gercekten kullaniliyorsa) satiri ekler."""
+    plugin_installed = os.path.exists(
+        os.path.join("node_modules", "@capacitor-firebase", "analytics")
+    )
+    if not plugin_installed:
+        log("@capacitor-firebase/analytics kurulu degil, bu adim atlanacak.")
+        return content, False
+
+    firebase_pod_line = "pod 'CapacitorFirebaseAnalytics/Analytics', :path => '../../node_modules/@capacitor-firebase/analytics'"
+
+    if firebase_pod_line in content:
+        log("Firebase Analytics pod satiri zaten mevcut, tekrar eklenmeyecek.")
+        return content, False
+
+    target_app_pattern = re.compile(r"(target\s+['\"]App['\"]\s+do\s*\n(?:[ \t]*capacitor_pods\s*\n)?)")
+    match = target_app_pattern.search(content)
+    if match:
+        insert_pos = match.end()
+        new_content = content[:insert_pos] + "  " + firebase_pod_line + "\n" + content[insert_pos:]
+        log("Firebase Analytics pod satiri 'target App do' blogunun icine eklendi.")
+        return new_content, True
+
+    log("UYARI: 'target App do' blogu bulunamadi, Firebase Analytics pod satiri eklenemedi.")
+    return content, False
+
+
 def main():
     if not os.path.exists(PODFILE_PATH):
         log(f"HATA: {PODFILE_PATH} bulunamadi. 'npx cap add ios' calistirildi mi?")
@@ -101,6 +136,9 @@ def main():
 
     content, fw_changed = ensure_use_frameworks(content)
     changed = changed or fw_changed
+
+    content, fb_changed = ensure_firebase_analytics_pod(content)
+    changed = changed or fb_changed
 
     if "CODE_SIGNING_ALLOWED" in content:
         log("Podfile zaten kod imzalama yamasina sahip, tekrar eklenmeyecek.")
