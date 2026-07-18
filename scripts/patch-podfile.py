@@ -124,6 +124,40 @@ def ensure_firebase_analytics_pod(content):
     return content, False
 
 
+def ensure_ump_version_pin(content):
+    """@capacitor-community/admob kullanan projelerde, GoogleUserMessagingPlatform
+    (UMP SDK) 3.0.0 surumunde TUM sinif/ozellik isimleri degistirildi (UMP onekleri
+    kaldirildi: UMPConsentInformation -> ConsentInformation, sharedInstance -> shared,
+    vb. - kaynak: Google'in resmi surum notlari, 24 Mart 2025). @capacitor-community/
+    admob paketinin icindeki ConsentExecutor.swift dosyasi hala ESKI (UMP onekli)
+    isimlendirmeyi kullaniyor, bu da 'has been renamed to' derleme hatalarina yol
+    aciyor. Podfile'da GoogleUserMessagingPlatform surumunu 3.0'in altina sabitleyerek
+    CocoaPods'un eski, uyumlu surumu kurmasini sagliyoruz."""
+    admob_installed = os.path.exists(
+        os.path.join("node_modules", "@capacitor-community", "admob")
+    )
+    if not admob_installed:
+        log("@capacitor-community/admob kurulu degil, bu adim atlanacak.")
+        return content, False
+
+    ump_pod_line = "pod 'GoogleUserMessagingPlatform', '< 3.0'"
+
+    if "GoogleUserMessagingPlatform" in content:
+        log("GoogleUserMessagingPlatform icin zaten bir Podfile satiri var, tekrar eklenmeyecek.")
+        return content, False
+
+    target_app_pattern = re.compile(r"(target\s+['\"]App['\"]\s+do\s*\n(?:[ \t]*capacitor_pods\s*\n)?(?:[ \t]*pod\s+'CapacitorFirebaseAnalytics[^\n]*\n)?)")
+    match = target_app_pattern.search(content)
+    if match:
+        insert_pos = match.end()
+        new_content = content[:insert_pos] + "  " + ump_pod_line + "\n" + content[insert_pos:]
+        log("GoogleUserMessagingPlatform '< 3.0' surumune sabitlendi (target App do blogu icine eklendi).")
+        return new_content, True
+
+    log("UYARI: 'target App do' blogu bulunamadi, GoogleUserMessagingPlatform satiri eklenemedi.")
+    return content, False
+
+
 def main():
     if not os.path.exists(PODFILE_PATH):
         log(f"HATA: {PODFILE_PATH} bulunamadi. 'npx cap add ios' calistirildi mi?")
@@ -139,6 +173,9 @@ def main():
 
     content, fb_changed = ensure_firebase_analytics_pod(content)
     changed = changed or fb_changed
+
+    content, ump_changed = ensure_ump_version_pin(content)
+    changed = changed or ump_changed
 
     if "CODE_SIGNING_ALLOWED" in content:
         log("Podfile zaten kod imzalama yamasina sahip, tekrar eklenmeyecek.")
