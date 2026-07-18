@@ -53,7 +53,7 @@ jobs:
       - name: Node.js kur
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '20'
 
       - name: NPM bagimliliklarini kur
         run: npm install
@@ -66,6 +66,9 @@ jobs:
 
       - name: Reklam kimliklerini (AdMob) projeye isle
         run: python3 scripts/patch-ads.py
+
+      - name: Podfile'i yamala (Pods hedeflerinde kod imzalamayi devre disi birak)
+        run: python3 scripts/patch-podfile.py
 
       - name: CocoaPods bagimliliklarini da iceren senkronizasyon
         run: npx cap sync ios
@@ -151,7 +154,8 @@ jobs:
           TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
           PROFILE_NAME: ${{ secrets.IOS_PROFILE_NAME }}
         run: |
-          xcodebuild -workspace ios/App/App.xcworkspace \
+          set -o pipefail
+          if xcodebuild -workspace ios/App/App.xcworkspace \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
@@ -160,9 +164,23 @@ jobs:
             MARKETING_VERSION="${{ steps.params.outputs.version }}" \
             CURRENT_PROJECT_VERSION="${{ steps.params.outputs.build_number }}" \
             CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
             DEVELOPMENT_TEAM="$TEAM_ID" \
             PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
-            archive | xcpretty
+            archive 2>&1 | tee /tmp/archive.log | xcpretty; then
+            ARCHIVE_OK=1
+          else
+            ARCHIVE_OK=0
+          fi
+          if [ "$ARCHIVE_OK" -ne 1 ] || [ ! -d "build/App.xcarchive" ]; then
+            echo "::error::Arsiv olusturulamadi."
+            echo "============ 'error' GECEN SATIRLAR (ONCELIKLI OKU) ============"
+            grep -i "error" /tmp/archive.log || echo "(error kelimesi gecen satir bulunamadi, tam logu asagida oku)"
+            echo "============ TAM XCODEBUILD LOG CIKTISI ============"
+            cat /tmp/archive.log
+            echo "============================================================"
+            exit 1
+          fi
           echo "Arsivleme tamamlandi."
 
       - name: "[İmzalı mod] exportOptions.plist olustur"
@@ -176,10 +194,24 @@ jobs:
       - name: "[İmzalı mod] .ipa olarak dısa aktar (xcodebuild -exportArchive)"
         if: steps.signing-check.outputs.has_signing == 'true'
         run: |
-          xcodebuild -exportArchive \
+          set -o pipefail
+          if xcodebuild -exportArchive \
             -archivePath build/App.xcarchive \
             -exportPath build/ipa \
-            -exportOptionsPlist exportOptions.plist | xcpretty
+            -exportOptionsPlist exportOptions.plist 2>&1 | tee /tmp/export.log | xcpretty; then
+            EXPORT_OK=1
+          else
+            EXPORT_OK=0
+          fi
+          if [ "$EXPORT_OK" -ne 1 ] || ! ls build/ipa/*.ipa >/dev/null 2>&1; then
+            echo "::error::IPA olusturulamadi."
+            echo "============ 'error' GECEN SATIRLAR (ONCELIKLI OKU) ============"
+            grep -i "error" /tmp/export.log || echo "(error kelimesi gecen satir bulunamadi, tam logu asagida oku)"
+            echo "============ TAM XCODEBUILD LOG CIKTISI ============"
+            cat /tmp/export.log
+            echo "============================================================"
+            exit 1
+          fi
           echo "### ✅ App Store'a Hazir IPA Uretildi" >> "$GITHUB_STEP_SUMMARY"
           echo "- Bundle ID: \`${{ steps.params.outputs.bundle_id }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Versiyon: \`${{ steps.params.outputs.version }}\` (Build \`${{ steps.params.outputs.build_number }}\`)" >> "$GITHUB_STEP_SUMMARY"
