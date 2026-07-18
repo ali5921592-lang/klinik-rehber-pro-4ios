@@ -191,6 +191,31 @@ jobs:
           BUNDLE_ID: ${{ steps.params.outputs.bundle_id }}
         run: python3 scripts/generate-export-options.py
 
+      - name: "[İmzalı mod] Arsivdeki framework'lerden gomulu profil dosyalarini temizle"
+        if: steps.signing-check.outputs.has_signing == 'true'
+        run: |
+          # CocoaPods + use_frameworks! ile gomulen framework'ler (Capacitor,
+          # Firebase, vb.) provisioning profile KABUL ETMEZ - sadece uygulamalar
+          # ve uygulama uzantilari profil gerektirir. Ancak bazi durumlarda
+          # arsivleme sirasinda framework paketlerine yanlislikla bir
+          # embedded.mobileprovision dosyasi kopyalanabiliyor; bu da
+          # 'xcodebuild -exportArchive' adiminda "X.framework does not support
+          # provisioning profiles" hatasina yol aciyor. Bu adim, dısa aktarmadan
+          # hemen once TUM framework paketlerinden bu dosyayi temizler.
+          APP_PATH=$(find build/App.xcarchive/Products/Applications -maxdepth 1 -name "*.app" | head -n1)
+          echo "Uygulama yolu: $APP_PATH"
+          if [ -d "$APP_PATH/Frameworks" ]; then
+            find "$APP_PATH/Frameworks" -name "*.framework" -type d | while read -r fw; do
+              if [ -f "$fw/embedded.mobileprovision" ]; then
+                echo "Temizleniyor: $fw/embedded.mobileprovision"
+                rm -f "$fw/embedded.mobileprovision"
+              fi
+            done
+          else
+            echo "Frameworks klasoru bulunamadi, atlaniyor."
+          fi
+          echo "Framework profil temizligi tamamlandi."
+
       - name: "[İmzalı mod] .ipa olarak dısa aktar (xcodebuild -exportArchive)"
         if: steps.signing-check.outputs.has_signing == 'true'
         run: |
@@ -198,8 +223,7 @@ jobs:
           if xcodebuild -exportArchive \
             -archivePath build/App.xcarchive \
             -exportPath build/ipa \
-            -exportOptionsPlist exportOptions.plist \
-            -allowProvisioningUpdates 2>&1 | tee /tmp/export.log | xcpretty; then
+            -exportOptionsPlist exportOptions.plist 2>&1 | tee /tmp/export.log | xcpretty; then
             EXPORT_OK=1
           else
             EXPORT_OK=0
