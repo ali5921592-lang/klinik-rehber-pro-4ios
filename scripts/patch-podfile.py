@@ -54,10 +54,26 @@ def log(msg):
 
 
 def ensure_use_frameworks(content):
-    """Podfile'da 'use_frameworks!' yoksa, platform satirindan hemen sonra ekler."""
-    if re.search(r"^\s*use_frameworks!", content, re.MULTILINE):
-        log("'use_frameworks!' zaten mevcut, tekrar eklenmeyecek.")
-        return content, False
+    """Podfile'da AKTIF (yorum satiri olmayan) 'use_frameworks!' yoksa,
+    platform satirindan hemen sonra ekler. Onceki surum, basinda '#' olan
+    yorum satirlarini da 'mevcut' sayan hatali bir regex kullaniyordu -
+    bu yuzden Capacitor'in varsayilan Podfile'indaki yorumlu ornek satiri
+    ('# use_frameworks!') gercek/aktif bir satir sanip atlıyordu. Simdi
+    yorum satirlarini haric tutuyoruz."""
+    active_pattern = re.compile(r"^[ \t]*use_frameworks!", re.MULTILINE)
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("use_frameworks!"):
+            log("'use_frameworks!' zaten aktif halde mevcut, tekrar eklenmeyecek.")
+            return content, False
+
+    # Yorum satiri halindeki '# use_frameworks!' varsa, o satiri aktif hale getir
+    commented_pattern = re.compile(r"^([ \t]*)#\s*use_frameworks!\s*$", re.MULTILINE)
+    match = commented_pattern.search(content)
+    if match:
+        new_content = commented_pattern.sub(r"\1use_frameworks!", content, count=1)
+        log("Yorum satirindaki '# use_frameworks!' etkinlestirildi (yorum isareti kaldirildi).")
+        return new_content, True
 
     platform_pattern = re.compile(r"(platform\s+:ios[^\n]*\n)")
     match = platform_pattern.search(content)
