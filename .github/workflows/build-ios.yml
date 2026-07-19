@@ -58,21 +58,6 @@ jobs:
       - name: NPM bagimliliklarini kur
         run: npm install
 
-      - name: Eski ios klasorunu temizle (repoda commit edilmis kalinti varsa)
-        run: |
-          # Repoda daha once commit edilmis eski bir ios/ klasoru varsa,
-          # 'npx cap add ios' bunun UZERINE YAZMAZ (mevcut dosyalari korur).
-          # Bu da patch-podfile.py'nin her calistirmada FARKLI/eski bir
-          # Podfile uzerinde calismasina ve guncellemelerin kalici olarak
-          # uygulanamamasina yol aciyordu. Her calistirmada tamamen temiz
-          # bir 'npx cap add ios' saglamak icin klasoru onceden siliyoruz.
-          if [ -d "ios" ]; then
-            echo "Eski ios/ klasoru bulundu, siliniyor..."
-            rm -rf ios
-          else
-            echo "ios/ klasoru yok, temiz baslangic."
-          fi
-
       - name: Capacitor iOS platformunu ekle (tazece uretilir)
         run: npx cap add ios
 
@@ -88,13 +73,18 @@ jobs:
       - name: CocoaPods bagimliliklarini da iceren senkronizasyon
         run: npx cap sync ios
 
-      - name: iOS projesini duzenle (Privacy Manifest, Info.plist, ekran yonleri)
+      - name: iOS projesini duzenle (Privacy Manifest, GoogleService-Info.plist, Info.plist, ekran yonleri)
         run: python3 scripts/patch-ios.py
 
-      - name: Privacy Manifest'i Xcode projesine gercekten kaydet (Copy Bundle Resources)
+      - name: Kaynak dosyalarini Xcode projesine gercekten kaydet (Copy Bundle Resources)
         run: |
           gem install xcodeproj --no-document
-          ruby scripts/add_privacy_manifest_to_xcodeproj.rb
+          ruby scripts/add_resource_to_xcodeproj.rb PrivacyInfo.xcprivacy
+          if [ -f "ios/App/App/GoogleService-Info.plist" ]; then
+            ruby scripts/add_resource_to_xcodeproj.rb GoogleService-Info.plist
+          else
+            echo "UYARI: GoogleService-Info.plist bulunamadi, Xcode projesine kaydedilmedi. Firebase Analytics kullaniliyorsa uygulama acilista cokebilir."
+          fi
 
       - name: Derleme parametrelerini belirle
         id: params
@@ -163,39 +153,67 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           echo "$PROFILE_BASE64" | base64 -d > ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
 
-      - name: "[İmzalı mod] Ruby ve Fastlane kur"
+      - name: "[İmzalı mod] Arşivle (xcodebuild archive)"
         if: steps.signing-check.outputs.has_signing == 'true'
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.2'
-          bundler-cache: true
+        env:
+          TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+          PROFILE_NAME: ${{ secrets.IOS_PROFILE_NAME }}
+        run: |
+          set -o pipefail
+          if xcodebuild -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath build/App.xcarchive \
+            PRODUCT_BUNDLE_IDENTIFIER="${{ steps.params.outputs.bundle_id }}" \
+            MARKETING_VERSION="${{ steps.params.outputs.version }}" \
+            CURRENT_PROJECT_VERSION="${{ steps.params.outputs.build_number }}" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            archive 2>&1 | tee /tmp/archive.log | xcpretty; then
+            ARCHIVE_OK=1
+          else
+            ARCHIVE_OK=0
+          fi
+          if [ "$ARCHIVE_OK" -ne 1 ] || [ ! -d "build/App.xcarchive" ]; then
+            echo "::error::Arsiv olusturulamadi."
+            echo "============ 'error' GECEN SATIRLAR (ONCELIKLI OKU) ============"
+            grep -i "error" /tmp/archive.log || echo "(error kelimesi gecen satir bulunamadi, tam logu asagida oku)"
+            echo "============ TAM XCODEBUILD LOG CIKTISI ============"
+            cat /tmp/archive.log
+            echo "============================================================"
+            exit 1
+          fi
+          echo "Arsivleme tamamlandi."
 
-      - name: "[İmzalı mod] Fastlane ile arsivle ve .ipa olarak disa aktar"
+      - name: "[İmzalı mod] exportOptions.plist olustur"
         if: steps.signing-check.outputs.has_signing == 'true'
         env:
           IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
           IOS_PROFILE_NAME: ${{ secrets.IOS_PROFILE_NAME }}
           BUNDLE_ID: ${{ steps.params.outputs.bundle_id }}
+        run: python3 scripts/generate-export-options.py
+
+      - name: "[İmzalı mod] .ipa olarak dısa aktar (xcodebuild -exportArchive)"
+        if: steps.signing-check.outputs.has_signing == 'true'
         run: |
           set -o pipefail
-          # Fastlane'in 'build_app' (gym) eylemi, CocoaPods + use_frameworks!
-          # ile gomulen kutuphanelere (Capacitor, Firebase vb.) yanlislikla
-          # uygulamanin provisioning profile'inin uygulanmaya calisilmasi
-          # sorununu (raw xcodebuild -exportArchive'in defalarca basarisiz
-          # oldugu "X.framework does not support provisioning profiles"
-          # hatasi) kendi icinde dogru sekilde yonetiyor. Bu, Ionic/Capacitor
-          # projelerinde endustri standardi olarak kullanilan yaklasimdir.
-          if bundle exec fastlane ios build_release 2>&1 | tee /tmp/fastlane.log; then
-            BUILD_OK=1
+          if xcodebuild -exportArchive \
+            -archivePath build/App.xcarchive \
+            -exportPath build/ipa \
+            -exportOptionsPlist exportOptions.plist 2>&1 | tee /tmp/export.log | xcpretty; then
+            EXPORT_OK=1
           else
-            BUILD_OK=0
+            EXPORT_OK=0
           fi
-          if [ "$BUILD_OK" -ne 1 ] || ! ls build/ipa/*.ipa >/dev/null 2>&1; then
+          if [ "$EXPORT_OK" -ne 1 ] || ! ls build/ipa/*.ipa >/dev/null 2>&1; then
             echo "::error::IPA olusturulamadi."
             echo "============ 'error' GECEN SATIRLAR (ONCELIKLI OKU) ============"
-            grep -i "error" /tmp/fastlane.log || echo "(error kelimesi gecen satir bulunamadi, tam logu asagida oku)"
-            echo "============ TAM FASTLANE LOG CIKTISI ============"
-            cat /tmp/fastlane.log
+            grep -i "error" /tmp/export.log || echo "(error kelimesi gecen satir bulunamadi, tam logu asagida oku)"
+            echo "============ TAM XCODEBUILD LOG CIKTISI ============"
+            cat /tmp/export.log
             echo "============================================================"
             exit 1
           fi
