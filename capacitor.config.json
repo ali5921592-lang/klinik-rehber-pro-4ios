@@ -1,6 +1,6 @@
 {
-  "appId": "com.klinikrehberpro.app",
-  "appName": "Klinik Rehber Pro",
+  "appId": "com.clinicalguidepro.app",
+  "appName": "Clinical Guide Pro",
   "webDir": "www",
   "backgroundColor": "#1657CF",
   "android": {
