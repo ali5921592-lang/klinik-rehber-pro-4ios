@@ -58,11 +58,11 @@ jobs:
               <key>signingStyle</key>
               <string>manual</string>
               <key>teamID</key>
-              <string>SENIN_TEAM_ID</string>
+              <string>9RFZP8QY57</string>
               <key>provisioningProfiles</key>
               <dict>
-                  <key>SENIN_BUNDLE_ID</key>
-                  <string>SENIN_PROFIL_ADI</string>
+                  <key>com.clinicalguidepro.app</key>
+                  <string>ClinicalGuidePro_AppStore</string>
               </dict>
               <key>uploadSymbols</key>
               <true/>
@@ -108,9 +108,9 @@ jobs:
             -destination "generic/platform=iOS" \
             archive \
             CODE_SIGN_STYLE=Manual \
-            PROVISIONING_PROFILE_SPECIFIER="SENIN_PROFIL_ADI" \
+            PROVISIONING_PROFILE_SPECIFIER="ClinicalGuidePro_AppStore" \
             CODE_SIGN_IDENTITY="Apple Distribution" \
-            DEVELOPMENT_TEAM="SENIN_TEAM_ID"
+            DEVELOPMENT_TEAM="9RFZP8QY57"
 
       - name: IPA olarak disa aktar
         run: |
