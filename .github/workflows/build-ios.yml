@@ -164,7 +164,7 @@ jobs:
           BUNDLE_ID: ${{ steps.params.outputs.bundle_id }}
         run: |
           set -o pipefail
-          if bundle exec fastlane ios build_release 2>&1 | tee /tmp/fastlane.log; then
+          if bundle exec fastlane ios build_app_lane 2>&1 | tee /tmp/fastlane.log; then
             BUILD_OK=1
           else
             BUILD_OK=0
