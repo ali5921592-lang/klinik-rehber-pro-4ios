@@ -16,7 +16,7 @@ platform :ios do
       path: "ios/App/App.xcodeproj",
       team_id: team_id,
       bundle_identifier: bundle_id,
-      code_sign_identity: "Apple Distribution: Ahmet TEKİN (9RFZP8QY57)"
+      code_sign_identity: "Apple Distribution: Ahmet TEKİN (9RFZP8QY57)",
       profile_name: profile_name,
       targets: ["App"]    
      )
