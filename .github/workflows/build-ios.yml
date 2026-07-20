@@ -1,18 +1,5 @@
 name: iOS IPA Derle
 
-# Bu workflow bir macOS runner uzerinde calisir (Xcode gerektigi icin).
-# GitHub Actions'in macOS runner'lari Xcode'u onceden kurulu getirir;
-# sizin Mac veya Xcode kurmaniza gerek yoktur.
-#
-# ONEMLI: Apple, imzali (App Store'a yuklenebilir) bir .ipa uretebilmek
-# icin GERCEK bir Apple Developer Program uyeligi (yillik $99) ve o hesaptan
-# uretilmis bir Distribution sertifikasi + provisioning profile ister.
-# Bu bilgiler yalnizca SIZIN Apple Developer hesabinizdan alinabilir; bu
-# workflow bunlari sizin yerinize "uretemez". Asagidaki 5 secret
-# tanimlanmadigi surece bu workflow, projenin Xcode'da SORUNSUZ ACILDIGINI
-# VE DERLENDIGINI dogrulamak icin yalnizca bir SIMULATOR derlemesi (duman
-# testi) yapar. Secret'lar eklendiginde otomatik olarak gercek, imzali,
-# App Store'a yuklenebilir bir .ipa uretir.
 on:
   push:
     branches: [ main, master ]
@@ -58,14 +45,8 @@ jobs:
       - name: NPM bagimliliklarini kur
         run: npm install
 
-      - name: Eski ios klasorunu temizle (repoda commit edilmis kalinti varsa)
+      - name: Eski ios klasorunu temizle
         run: |
-          # Repoda daha once commit edilmis eski bir ios/ klasoru varsa,
-          # 'npx cap add ios' bunun UZERINE YAZMAZ (mevcut dosyalari korur).
-          # Bu da patch-podfile.py'nin her calistirmada FARKLI/eski bir
-          # Podfile uzerinde calismasina ve guncellemelerin kalici olarak
-          # uygulanamamasina yol aciyordu. Her calistirmada tamamen temiz
-          # bir 'npx cap add ios' saglamak icin klasoru onceden siliyoruz.
           if [ -d "ios" ]; then
             echo "Eski ios/ klasoru bulundu, siliniyor..."
             rm -rf ios
@@ -73,7 +54,7 @@ jobs:
             echo "ios/ klasoru yok, temiz baslangic."
           fi
 
-      - name: Capacitor iOS platformunu ekle (tazece uretilir)
+      - name: Capacitor iOS platformunu ekle
         run: npx cap add ios
 
       - name: Uygulama ikonu ve splash screen gorsellerini uret
@@ -82,23 +63,23 @@ jobs:
       - name: Reklam kimliklerini (AdMob) projeye isle
         run: python3 scripts/patch-ads.py
 
-      - name: Podfile'i yamala (Pods hedeflerinde kod imzalamayi devre disi birak)
+      - name: Podfile'i yamala
         run: python3 scripts/patch-podfile.py
 
       - name: CocoaPods bagimliliklarini da iceren senkronizasyon
         run: npx cap sync ios
 
-      - name: iOS projesini duzenle (Privacy Manifest, GoogleService-Info.plist, Info.plist, ekran yonleri)
+      - name: iOS projesini duzenle
         run: python3 scripts/patch-ios.py
 
-      - name: Kaynak dosyalarini Xcode projesine gercekten kaydet (Copy Bundle Resources)
+      - name: Kaynak dosyalarini Xcode projesine kaydet
         run: |
           gem install xcodeproj --no-document
           ruby scripts/add_resource_to_xcodeproj.rb PrivacyInfo.xcprivacy
           if [ -f "ios/App/App/GoogleService-Info.plist" ]; then
             ruby scripts/add_resource_to_xcodeproj.rb GoogleService-Info.plist
           else
-            echo "UYARI: GoogleService-Info.plist bulunamadi, Xcode projesine kaydedilmedi. Firebase Analytics kullaniliyorsa uygulama acilista cokebilir."
+            echo "UYARI: GoogleService-Info.plist bulunamadi."
           fi
 
       - name: Derleme parametrelerini belirle
@@ -126,8 +107,7 @@ jobs:
             echo "has_signing=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # ============ SECRET'LAR YOKSA: SIMULATOR DUMAN TESTI ============
-      - name: "[Imzasiz mod] Simulator icin derle (proje saglik kontrolu)"
+      - name: "[Imzasiz mod] Simulator icin derle"
         if: steps.signing-check.outputs.has_signing == 'false'
         run: |
           xcodebuild -workspace ios/App/App.xcworkspace \
@@ -140,13 +120,8 @@ jobs:
             build | xcpretty || true
           echo "### ⚠️ İmzasız Mod (Duman Testi)" >> "$GITHUB_STEP_SUMMARY"
           echo "Apple imzalama sirlari (secrets) tanimlanmadigi icin gercek bir .ipa uretilmedi." >> "$GITHUB_STEP_SUMMARY"
-          echo "Bunun yerine proje simulator icin basariyla derlendi mi diye kontrol edildi (yukaridaki log)." >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**App Store'a yuklenebilir gercek bir .ipa icin gerekli 5 secret:**" >> "$GITHUB_STEP_SUMMARY"
-          echo "- \`IOS_DIST_CERT_BASE64\`, \`IOS_DIST_CERT_PASSWORD\`, \`IOS_PROVISION_PROFILE_BASE64\`, \`IOS_TEAM_ID\`, \`IOS_PROFILE_NAME\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "(Detayli adimlar icin README.md dosyasina bakin.)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Gerekli 5 secret: IOS_DIST_CERT_BASE64, IOS_DIST_CERT_PASSWORD, IOS_PROVISION_PROFILE_BASE64, IOS_TEAM_ID, IOS_PROFILE_NAME" >> "$GITHUB_STEP_SUMMARY"
 
-      # ============ SECRET'LAR VARSA: GERÇEK İMZALI .IPA ============
       - name: "[İmzalı mod] Sertifika ve provisioning profile kur"
         if: steps.signing-check.outputs.has_signing == 'true'
         env:
@@ -165,8 +140,14 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           rm -f certificate.p12
 
+          echo "$PROFILE_BASE64" | base64 -d > profile.mobileprovision
+          echo "==== KURULAN PROFILIN ADI ===="
+          security cms -D -i profile.mobileprovision | grep -A1 "<key>Name</key>" || true
+          echo "=============================="
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "$PROFILE_BASE64" | base64 -d > ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
+          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
+          mkdir -p ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles
+          cp profile.mobileprovision ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/profile.mobileprovision
 
       - name: "[İmzalı mod] Ruby ve Fastlane kur"
         if: steps.signing-check.outputs.has_signing == 'true'
@@ -183,13 +164,6 @@ jobs:
           BUNDLE_ID: ${{ steps.params.outputs.bundle_id }}
         run: |
           set -o pipefail
-          # Fastlane'in 'build_app' (gym) eylemi, CocoaPods + use_frameworks!
-          # ile gomulen kutuphanelere (Capacitor, Firebase vb.) yanlislikla
-          # uygulamanin provisioning profile'inin uygulanmaya calisilmasi
-          # sorununu (raw xcodebuild -exportArchive'in defalarca basarisiz
-          # oldugu "X.framework does not support provisioning profiles"
-          # hatasi) kendi icinde dogru sekilde yonetiyor. Bu, Ionic/Capacitor
-          # projelerinde endustri standardi olarak kullanilan yaklasimdir.
           if bundle exec fastlane ios build_release 2>&1 | tee /tmp/fastlane.log; then
             BUILD_OK=1
           else
@@ -197,11 +171,8 @@ jobs:
           fi
           if [ "$BUILD_OK" -ne 1 ] || ! ls build/ipa/*.ipa >/dev/null 2>&1; then
             echo "::error::IPA olusturulamadi."
-            echo "============ 'error' GECEN SATIRLAR (ONCELIKLI OKU) ============"
-            grep -i "error" /tmp/fastlane.log || echo "(error kelimesi gecen satir bulunamadi, tam logu asagida oku)"
-            echo "============ TAM FASTLANE LOG CIKTISI ============"
-            cat /tmp/fastlane.log
-            echo "============================================================"
+            echo "============ 'error' GECEN SATIRLAR ============"
+            grep -i "error" /tmp/fastlane.log || echo "(error satiri yok)"
             exit 1
           fi
           echo "### ✅ App Store'a Hazir IPA Uretildi" >> "$GITHUB_STEP_SUMMARY"
@@ -212,12 +183,12 @@ jobs:
         if: steps.signing-check.outputs.has_signing == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: hemsire-rehberi-pro-ipa
+          name: clinical-guide-pro-ipa
           path: build/ipa/*.ipa
           if-no-files-found: error
           retention-days: 90
 
-      - name: Dosyalari GitHub Release'e ekle (yalnizca release olayinda)
+      - name: Dosyalari GitHub Release'e ekle
         if: steps.signing-check.outputs.has_signing == 'true' && github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
