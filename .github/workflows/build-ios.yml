@@ -18,7 +18,7 @@ jobs:
           node-version: 20
 
       - name: Paketleri yukle
-        run: npm ci
+        run: npm install
 
       - name: Web build
         run: npm run build
