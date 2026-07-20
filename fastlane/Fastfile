@@ -17,8 +17,9 @@ platform :ios do
       team_id: team_id,
       bundle_identifier: bundle_id,
       code_sign_identity: "Apple Distribution",
-      profile_name: profile_name
-    )
+      profile_name: profile_name,
+      targets: ["App"]    
+     )
 
     build_app(
       workspace: "ios/App/App.xcworkspace",
